@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.media.MediaCodecInfo
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -67,6 +68,9 @@ class VideoViewModel(app: Application) : AndroidViewModel(app) {
     fun setUltra(on: Boolean) = _settings.update { it.copy(ultra = on) }
     fun setRes(i: Int) = _settings.update { it.copy(resIndex = i) }
     fun setFps(i: Int) = _settings.update { it.copy(fpsIndex = i) }
+    fun setEnhance(on: Boolean) = _settings.update { it.copy(enhance = on) }
+    fun setEnhanceStrength(v: Float) = _settings.update { it.copy(enhanceStrength = v) }
+    fun setSmooth(on: Boolean) = _settings.update { it.copy(smooth = on) }
 
     // ---------- picking ----------
     fun onPicked(uri: Uri?) {
@@ -128,20 +132,35 @@ class VideoViewModel(app: Application) : AndroidViewModel(app) {
         val meta = _state.value.metaOrNull() ?: return
         if (_state.value is VideoUiState.Working) return
         val app = getApplication<Application>()
-        val settings = _settings.value
-        val target = settings.maxMb * 1048576L
+        val target = _settings.value.maxMb * 1048576L
 
         job = viewModelScope.launch {
+            var settings = _settings.value
+            var note: String? = null
             var factor = 0.92
             var best: File? = null
             try {
                 for (pass in 1..3) {
-                    _state.value = VideoUiState.Working(meta, pass, 0f)
-                    val plan = Planner.plan(meta, settings, factor)
                     val out = File(app.cacheDir, "vs_pass_$pass.mp4")
                     out.delete()
-                    runTransformer(meta, plan, out) { p ->
-                        _state.value = VideoUiState.Working(meta, pass, p)
+                    var plan = Planner.plan(meta, settings, factor)
+                    _state.value = VideoUiState.Working(meta, pass, 0f)
+                    try {
+                        runTransformer(meta, plan, out) { p -> _state.value = VideoUiState.Working(meta, pass, p) }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        if (plan.blend || plan.enhance > 0f) {
+                            // Effects are not supported on this phone: redo this pass without them.
+                            note = "Enhance/Smooth isn't supported on this phone, so the video was exported without it."
+                            settings = settings.copy(smooth = false, enhance = false)
+                            plan = Planner.plan(meta, settings, factor)
+                            out.delete()
+                            _state.value = VideoUiState.Working(meta, pass, 0f)
+                            runTransformer(meta, plan, out) { p -> _state.value = VideoUiState.Working(meta, pass, p) }
+                        } else {
+                            throw e
+                        }
                     }
                     if (best == null || out.length() < best.length()) best = out
                     if (out.length() <= target) {
@@ -154,7 +173,7 @@ class VideoViewModel(app: Application) : AndroidViewModel(app) {
                 val displayName = meta.name.substringBeforeLast('.') + "_compressed.mp4"
                 val bytes = finalFile.length()
                 val uri = withContext(Dispatchers.IO) { MediaSaver.saveVideo(app, finalFile, displayName) }
-                _state.value = VideoUiState.Done(meta, uri, bytes, bytes <= target)
+                _state.value = VideoUiState.Done(meta, uri, bytes, bytes <= target, note)
             } catch (e: CancellationException) {
                 _state.value = VideoUiState.Ready(meta)
                 throw e
@@ -169,6 +188,8 @@ class VideoViewModel(app: Application) : AndroidViewModel(app) {
     fun cancel() {
         job?.cancel()
     }
+
+    private class StalledException : Exception("Export stalled")
 
     private suspend fun runTransformer(
         meta: VideoMeta,
@@ -208,6 +229,7 @@ class VideoViewModel(app: Application) : AndroidViewModel(app) {
 
         val effects = buildList<Effect> {
             add(Presentation.createForWidthAndHeight(plan.width, plan.height, Presentation.LAYOUT_SCALE_TO_FIT))
+            if (plan.enhance > 0f || plan.blend) add(ProcessEffect(plan.blend, plan.enhance))
             if (plan.dropFrames) add(FrameDropEffect.createDefaultFrameDropEffect(plan.fps.toFloat()))
         }
         val item = EditedMediaItem.Builder(MediaItem.fromUri(meta.uri))
@@ -216,11 +238,26 @@ class VideoViewModel(app: Application) : AndroidViewModel(app) {
 
         transformer.start(item, out.absolutePath)
 
+        val risky = plan.blend || plan.enhance > 0f
         val poller = viewModelScope.launch {
             val holder = ProgressHolder()
+            var last = -1f
+            var lastChange = SystemClock.elapsedRealtime()
             while (cont.isActive) {
+                val now = SystemClock.elapsedRealtime()
                 if (transformer.getProgress(holder) != Transformer.PROGRESS_STATE_NOT_STARTED) {
-                    onProgress((holder.progress / 100f).coerceIn(0f, 1f))
+                    val p = holder.progress / 100f
+                    if (p != last) {
+                        last = p
+                        lastChange = now
+                    }
+                    onProgress(p.coerceIn(0f, 1f))
+                }
+                // A broken custom effect can freeze the export: bail out so we can retry without it.
+                if (risky && now - lastChange > STALL_MS) {
+                    if (cont.isActive) cont.resumeWithException(StalledException())
+                    transformer.cancel()
+                    break
                 }
                 delay(300)
             }
@@ -229,5 +266,9 @@ class VideoViewModel(app: Application) : AndroidViewModel(app) {
             poller.cancel()
             transformer.cancel()
         }
+    }
+
+    private companion object {
+        const val STALL_MS = 45_000L
     }
 }

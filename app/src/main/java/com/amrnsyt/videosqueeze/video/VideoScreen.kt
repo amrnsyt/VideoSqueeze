@@ -71,6 +71,7 @@ import com.amrnsyt.videosqueeze.ui.SelectChip
 import com.amrnsyt.videosqueeze.ui.Spacing
 import com.amrnsyt.videosqueeze.ui.StepSlider
 import com.amrnsyt.videosqueeze.ui.SwitchRow
+import com.amrnsyt.videosqueeze.ui.ValueSlider
 import com.amrnsyt.videosqueeze.ui.VideoSqueezeTheme
 import com.amrnsyt.videosqueeze.util.Intents
 import kotlin.math.roundToInt
@@ -99,6 +100,9 @@ fun VideoScreen(vm: VideoViewModel = viewModel()) {
         onUltra = vm::setUltra,
         onRes = vm::setRes,
         onFps = vm::setFps,
+        onEnhance = vm::setEnhance,
+        onStrength = vm::setEnhanceStrength,
+        onSmooth = vm::setSmooth,
         onCompress = vm::compress,
         onCancel = vm::cancel,
         onShare = { Intents.share(context, it, "video/mp4") },
@@ -116,6 +120,9 @@ fun VideoContent(
     onUltra: (Boolean) -> Unit,
     onRes: (Int) -> Unit,
     onFps: (Int) -> Unit,
+    onEnhance: (Boolean) -> Unit,
+    onStrength: (Float) -> Unit,
+    onSmooth: (Boolean) -> Unit,
     onCompress: () -> Unit,
     onCancel: () -> Unit,
     onShare: (Uri) -> Unit,
@@ -162,6 +169,7 @@ fun VideoContent(
                         onTab = { tab = it },
                         busy = working != null,
                         onPlatform = onPlatform, onMaxMb = onMaxMb, onUltra = onUltra, onRes = onRes, onFps = onFps,
+                        onEnhance = onEnhance, onStrength = onStrength, onSmooth = onSmooth,
                         onShare = onShare, onOpen = onOpen
                     )
                 }
@@ -239,6 +247,9 @@ private fun VideoPanel(
     onUltra: (Boolean) -> Unit,
     onRes: (Int) -> Unit,
     onFps: (Int) -> Unit,
+    onEnhance: (Boolean) -> Unit,
+    onStrength: (Float) -> Unit,
+    onSmooth: (Boolean) -> Unit,
     onShare: (Uri) -> Unit,
     onOpen: (Uri) -> Unit
 ) {
@@ -249,7 +260,11 @@ private fun VideoPanel(
     EditorPanel(modifier = Modifier.heightIn(max = Spacing.panelMax)) {
         PanelTabs(labels, cur, onTab)
         Text(
-            text = "${plan.width}×${plan.height} • ${plan.fps} fps • ~${plan.videoBps / 1000} kbps",
+            text = buildString {
+                append("${plan.width}×${plan.height} • ${plan.fps} fps • ~${plan.videoBps / 1000} kbps")
+                if (plan.enhance > 0f) append(" • Enhance")
+                if (plan.blend) append(" • Smooth ×2")
+            },
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = Spacing.m)
@@ -278,7 +293,7 @@ private fun VideoPanel(
                 Column {
                     when (t) {
                         0 -> TargetTab(meta, settings, !busy, onPlatform, onMaxMb)
-                        1 -> QualityTab(settings, !busy, onUltra, onRes, onFps)
+                        1 -> QualityTab(settings, !busy, onUltra, onRes, onFps, onEnhance, onStrength, onSmooth)
                         else -> done?.let { d -> ResultTab(d, { onShare(d.outUri) }, { onOpen(d.outUri) }) }
                     }
                 }
@@ -347,11 +362,14 @@ private fun QualityTab(
     enabled: Boolean,
     onUltra: (Boolean) -> Unit,
     onRes: (Int) -> Unit,
-    onFps: (Int) -> Unit
+    onFps: (Int) -> Unit,
+    onEnhance: (Boolean) -> Unit,
+    onStrength: (Float) -> Unit,
+    onSmooth: (Boolean) -> Unit
 ) {
     SwitchRow(
         title = "Ultra HD",
-        subtitle = "Resolution cap and frame rate limit. Off keeps original size at 30 fps.",
+        subtitle = "Resolution cap and frame rate target. Off keeps original size at 30 fps.",
         checked = settings.ultra,
         onCheckedChange = onUltra,
         modifier = Modifier.padding(top = Spacing.s)
@@ -366,11 +384,35 @@ private fun QualityTab(
     )
     StepSlider(
         title = "Frame rate",
-        hint = "Maximum. Not increased.",
+        hint = "Target frame rate",
         labels = FpsOptions.map { it.toString() },
         index = settings.fpsIndex,
         onIndexChange = onFps,
         enabled = settings.ultra && enabled
+    )
+    SwitchRow(
+        title = "Enhance",
+        subtitle = "Sharper, crisper picture with a light contrast and colour lift.",
+        checked = settings.enhance,
+        onCheckedChange = onEnhance,
+        modifier = Modifier.padding(top = Spacing.m)
+    )
+    if (settings.enhance) {
+        ValueSlider(
+            label = "Strength",
+            valueText = "${settings.enhanceStrength.roundToInt()}%",
+            value = settings.enhanceStrength,
+            range = 0f..100f,
+            onValueChange = onStrength,
+            enabled = enabled
+        )
+    }
+    SwitchRow(
+        title = "Smooth",
+        subtitle = "Adds blended in-between frames when the frame rate target is higher than the video's.",
+        checked = settings.smooth,
+        onCheckedChange = onSmooth,
+        modifier = Modifier.padding(top = Spacing.m)
     )
 }
 
@@ -389,6 +431,9 @@ private fun ResultTab(done: VideoUiState.Done, onShare: () -> Unit, onOpen: () -
             style = MaterialTheme.typography.bodySmall,
             color = if (done.fits) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error
         )
+        done.note?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
         Row(
             modifier = Modifier.padding(top = Spacing.s),
             horizontalArrangement = Arrangement.spacedBy(Spacing.s),
@@ -416,6 +461,7 @@ private fun VideoContentPreview() {
             state = VideoUiState.Ready(meta),
             settings = VideoSettings(),
             onPick = {}, onPlatform = {}, onMaxMb = {}, onUltra = {}, onRes = {}, onFps = {},
+            onEnhance = {}, onStrength = {}, onSmooth = {},
             onCompress = {}, onCancel = {}, onShare = {}, onOpen = {}
         )
     }

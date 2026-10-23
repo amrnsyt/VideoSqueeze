@@ -42,7 +42,10 @@ data class VideoSettings(
     val maxMb: Int = 32,
     val ultra: Boolean = true,
     val resIndex: Int = 2,
-    val fpsIndex: Int = 4
+    val fpsIndex: Int = 4,
+    val enhance: Boolean = true,
+    val enhanceStrength: Float = 50f,
+    val smooth: Boolean = true
 )
 
 @Immutable
@@ -54,7 +57,9 @@ data class Plan(
     val fps: Int,
     val dropFrames: Boolean,
     val reduced: Boolean,
-    val tooSmall: Boolean
+    val tooSmall: Boolean,
+    val blend: Boolean,
+    val enhance: Float
 )
 
 @Immutable
@@ -62,7 +67,13 @@ sealed interface VideoUiState {
     data object Idle : VideoUiState
     data class Ready(val meta: VideoMeta) : VideoUiState
     data class Working(val meta: VideoMeta, val pass: Int, val progress: Float) : VideoUiState
-    data class Done(val meta: VideoMeta, val outUri: Uri, val outBytes: Long, val fits: Boolean) : VideoUiState
+    data class Done(
+        val meta: VideoMeta,
+        val outUri: Uri,
+        val outBytes: Long,
+        val fits: Boolean,
+        val note: String? = null
+    ) : VideoUiState
     data class Error(val meta: VideoMeta?, val message: String) : VideoUiState
 }
 
@@ -86,9 +97,20 @@ object Planner {
         val vbps = max(80_000.0, total - audio)
 
         val targetFps = if (s.ultra) FpsOptions[s.fpsIndex] else 30
-        val srcFps = if (meta.fps > 1f) meta.fps else targetFps.toFloat()
-        val drop = targetFps < srcFps - 0.5f
-        val fpsOut = if (drop) targetFps else srcFps.roundToInt()
+        val fpsKnown = meta.fps > 1f
+        val srcFps = if (fpsKnown) meta.fps else 30f
+        // Smooth doubles the frame rate, so only use it on low-fps sources with a higher target.
+        val blend = s.smooth && fpsKnown && srcFps <= 35f && targetFps >= srcFps * 1.5f
+        val drop: Boolean
+        val fpsOut: Int
+        if (blend) {
+            val doubled = srcFps * 2f
+            drop = targetFps < doubled - 0.5f
+            fpsOut = if (drop) targetFps else doubled.roundToInt()
+        } else {
+            drop = fpsKnown && targetFps < srcFps - 0.5f
+            fpsOut = if (drop) targetFps else srcFps.roundToInt()
+        }
 
         var scale = 1.0
         if (s.ultra) {
@@ -111,7 +133,9 @@ object Planner {
             fps = fpsOut,
             dropFrames = drop,
             reduced = reduced,
-            tooSmall = vbps <= 80_000.0
+            tooSmall = vbps <= 80_000.0,
+            blend = blend,
+            enhance = if (s.enhance) (s.enhanceStrength / 100f).coerceIn(0f, 1f) else 0f
         )
     }
 }
