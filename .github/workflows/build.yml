@@ -8,9 +8,15 @@ on:
 permissions:
   contents: write
 
+# A new push cancels an older run that is still going, so minutes are not wasted
+concurrency:
+  group: build
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -18,9 +24,6 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
 
       # Keeps the same debug signature between builds so the APK installs as an update
       - name: Restore debug keystore
@@ -41,7 +44,11 @@ jobs:
       - name: Show errors
         if: failure()
         run: |
-          grep -E "^e: |error:|What went wrong|Execution failed|Unresolved|Could not" -A3 build.log | head -80 || true
+          if [ -f build.log ]; then
+            grep -E "^e: |error:|What went wrong|Execution failed|Unresolved|Could not" -A3 build.log | head -80 || true
+          else
+            echo "No build.log: the job failed before Gradle started. Check the earlier steps."
+          fi
 
       - name: Publish latest APK
         env:
