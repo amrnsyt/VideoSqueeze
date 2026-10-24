@@ -4,13 +4,14 @@ package com.amrnsyt.videosqueeze.video
 
 import android.content.Context
 import android.opengl.GLES20
-import androidx.media3.common.GlEffect
 import androidx.media3.common.GlObjectsProvider
-import androidx.media3.common.GlShaderProgram
 import androidx.media3.common.GlTextureInfo
 import androidx.media3.common.VideoFrameProcessingException
+import androidx.media3.common.util.GlProgram
 import androidx.media3.common.util.GlUtil
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.effect.GlEffect
+import androidx.media3.effect.GlShaderProgram
 import java.util.concurrent.Executor
 
 /**
@@ -41,7 +42,7 @@ private class ProcessProgram(
     private var errorListener: GlShaderProgram.ErrorListener? = null
     private var errorExecutor: Executor? = null
 
-    private var program: GlUtil.GlProgram? = null
+    private var program: GlProgram? = null
     private val pool = ArrayList<GlTextureInfo>()
     private val free = ArrayDeque<GlTextureInfo>()
     private var prevTex: GlTextureInfo? = null
@@ -141,7 +142,7 @@ private class ProcessProgram(
 
     private fun ensureResources(provider: GlObjectsProvider, w: Int, h: Int) {
         if (program != null) return
-        val p = GlUtil.GlProgram(VERTEX_SHADER, FRAGMENT_SHADER)
+        val p = GlProgram(VERTEX_SHADER, FRAGMENT_SHADER)
         p.setBufferAttribute(
             "aFramePosition",
             GlUtil.getNormalizedCoordinateBounds(),
