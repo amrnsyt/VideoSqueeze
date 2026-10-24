@@ -16,7 +16,7 @@ import java.util.concurrent.Executor
 
 /**
  * One GPU effect that can do two things:
- *  - Enhance: unsharp-mask sharpening with a light contrast / saturation lift.
+ *  - Enhance: unsharp-mask sharpening plus an HDR-style tone and colour look.
  *  - Smooth: inserts a blended frame between every pair of frames (2x frame rate).
  */
 class ProcessEffect(
@@ -33,9 +33,8 @@ private class ProcessProgram(
     strength: Float
 ) : GlShaderProgram {
 
-    private val sharp = 0.9f * strength
-    private val contrast = 1f + 0.08f * strength
-    private val saturation = 1f + 0.12f * strength
+    private val sharp = 0.8f * strength
+    private val look = strength
 
     private var inputListener: GlShaderProgram.InputListener? = null
     private var outputListener: GlShaderProgram.OutputListener? = null
@@ -174,8 +173,7 @@ private class ProcessProgram(
         p.setSamplerTexIdUniform("uTexB", texB, 1)
         p.setFloatUniform("uMix", mix)
         p.setFloatUniform("uSharp", if (enhance) sharp else 0f)
-        p.setFloatUniform("uContrast", if (enhance) contrast else 1f)
-        p.setFloatUniform("uSat", if (enhance) saturation else 1f)
+        p.setFloatUniform("uLook", if (enhance) look else 0f)
         p.setFloatsUniform("uTexel", floatArrayOf(1f / target.width, 1f / target.height))
         p.bindAttributesAndUniforms()
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
@@ -211,8 +209,7 @@ uniform sampler2D uTexB;
 uniform float uMix;
 uniform vec2 uTexel;
 uniform float uSharp;
-uniform float uContrast;
-uniform float uSat;
+uniform float uLook;
 varying vec2 vTexSamplingCoord;
 
 vec3 fetch(sampler2D t, vec2 uv) {
@@ -227,6 +224,22 @@ vec3 fetch(sampler2D t, vec2 uv) {
   return c;
 }
 
+// HDR-style tone: lift shadows, roll off highlights, S-curve, vibrance.
+vec3 hdrLook(vec3 c, float k) {
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  float shadows = (1.0 - smoothstep(0.0, 0.5, l)) * 0.06 * k;
+  float highlights = smoothstep(0.7, 1.0, l);
+  c = c + shadows;
+  c = mix(c, c * (1.0 - 0.12 * k), highlights);
+  c = clamp(c, 0.0, 1.0);
+  c = mix(c, c * c * (3.0 - 2.0 * c), 0.35 * k);
+  float mx = max(c.r, max(c.g, c.b));
+  float mn = min(c.r, min(c.g, c.b));
+  float boost = 1.0 + (1.0 - (mx - mn)) * 0.35 * k;
+  float l2 = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  return mix(vec3(l2), c, boost);
+}
+
 void main() {
   vec3 c;
   if (uMix >= 1.0) {
@@ -234,9 +247,9 @@ void main() {
   } else {
     c = mix(fetch(uTexA, vTexSamplingCoord), fetch(uTexB, vTexSamplingCoord), uMix);
   }
-  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  c = mix(vec3(l), c, uSat);
-  c = (c - 0.5) * uContrast + 0.5;
+  if (uLook > 0.0) {
+    c = hdrLook(c, uLook);
+  }
   gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
 }
 """

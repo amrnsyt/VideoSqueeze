@@ -392,7 +392,7 @@ private fun QualityTab(
     )
     SwitchRow(
         title = "Enhance",
-        subtitle = "Sharper, crisper picture with a light contrast and colour lift.",
+        subtitle = "Sharper picture with an HDR-style look: richer shadows, softer highlights, livelier colour.",
         checked = settings.enhance,
         onCheckedChange = onEnhance,
         modifier = Modifier.padding(top = Spacing.m)
