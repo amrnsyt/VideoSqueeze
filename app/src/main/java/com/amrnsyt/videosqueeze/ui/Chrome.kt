@@ -177,7 +177,8 @@ private data class NavItem(val label: String, val icon: ImageVector)
 
 private val NavItems = listOf(
     NavItem("Compress", AppIcons.Compress),
-    NavItem("Watermark", AppIcons.Watermark)
+    NavItem("Watermark", AppIcons.Watermark),
+    NavItem("Studio", AppIcons.Studio)
 )
 
 @Composable

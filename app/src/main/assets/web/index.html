@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>VideoSqueeze</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <h1>Video<span>Squeeze</span></h1>
+
+  <div class="tabs">
+    <button id="tabVideo" class="on">Video</button>
+    <button id="tabWm">Watermark</button>
+  </div>
+
+  <!-- ================= VIDEO ================= -->
+  <div id="videoMode">
+    <p class="sub">Shrink video to the exact upload limit. Everything runs on your device.</p>
+
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept="video/mp4,video/quicktime,.mp4,.mov" hidden>
+      <b id="dropTitle">Drop a video here or tap to choose</b>
+      <small id="dropInfo">MP4 or MOV • up to 100 MB</small>
+    </label>
+    <p class="msg" id="ingestMsg"></p>
+    <div class="profile" id="profile" hidden></div>
+
+    <section id="settings" hidden>
+      <h2>Target platform</h2>
+      <div class="chips" id="chips"></div>
+
+      <div class="row">
+        <label for="mb">Max size (MB)</label>
+        <input type="number" id="mb" min="1" max="2000" step="1" value="32" inputmode="decimal">
+      </div>
+
+      <h2>Quality</h2>
+      <div class="row tog">
+        <div><b>Ultra HD</b><small>Resolution cap, smooth frame rate and frame interpolation.</small></div>
+        <label class="sw"><input type="checkbox" id="ultra" checked><span></span></label>
+      </div>
+
+      <div id="ultraBox">
+        <div class="lbl"><b>Resolution</b><small>Maximum. Never upscaled.</small></div>
+        <input type="range" id="res" min="0" max="4" step="1" value="2">
+        <div class="ticks" id="resTicks"></div>
+
+        <div class="lbl"><b>Frame rate</b><small>Smoother playback</small></div>
+        <input type="range" id="fps" min="0" max="4" step="1" value="4">
+        <div class="ticks" id="fpsTicks"></div>
+
+        <div class="row tog">
+          <div><b>Optical flow</b><small>Adds in-between frames when the source has fewer fps than the target (frame blending).</small></div>
+          <label class="sw"><input type="checkbox" id="flow" checked><span></span></label>
+        </div>
+      </div>
+
+      <h2>Color</h2>
+      <div class="row tog">
+        <div><b>Vivid color</b><small>Richer, punchier colors. Adjust by hand.</small></div>
+        <label class="sw"><input type="checkbox" id="vivid"><span></span></label>
+      </div>
+      <div id="vividBox" hidden>
+        <img id="vividPrev" alt="Color preview" hidden>
+        <small class="hint">Preview is approximate. Vibrance shows only in the final video.</small>
+        <div class="lbl"><b>Saturation</b><small id="satV">130%</small></div>
+        <input type="range" id="sat" min="50" max="200" step="5" value="130">
+        <div class="lbl"><b>Vibrance</b><small id="vibV">30</small></div>
+        <input type="range" id="vib" min="-100" max="100" step="5" value="30">
+        <div class="lbl"><b>Contrast</b><small id="conV">105%</small></div>
+        <input type="range" id="con" min="80" max="130" step="1" value="105">
+        <div class="lbl"><b>Brightness</b><small id="briV">0</small></div>
+        <input type="range" id="bri" min="-20" max="20" step="1" value="0">
+        <button id="vividReset" class="ghost">Reset colors</button>
+      </div>
+
+      <h2>Output</h2>
+      <div class="lbl"><b>Encoder speed</b><small id="speedHint"></small></div>
+      <div class="chips" id="speedChips"></div>
+      <div class="row tog">
+        <div><b>Split into 30-second parts</b><small>Cuts long clips into exact, back-to-back 30 s parts (ideal for WhatsApp Status). Each part is fitted to the size limit.</small></div>
+        <label class="sw"><input type="checkbox" id="split"><span></span></label>
+      </div>
+
+      <div class="plan" id="plan"></div>
+
+      <button id="go" class="primary">Compress</button>
+      <button id="cancel" class="ghost" hidden>Cancel</button>
+
+      <div class="stages" id="stages" hidden>
+        <ol>
+          <li><i></i>Initialize</li>
+          <li><i></i>Read file</li>
+          <li><i></i>Encode</li>
+          <li><i></i>Extract</li>
+        </ol>
+        <div class="bar"><i id="bar"></i></div>
+        <div class="meta"><b id="pct">0%</b><span id="part"></span><span id="eta"></span></div>
+        <div class="meta small" id="thread"></div>
+      </div>
+      <p class="status" id="status"></p>
+    </section>
+
+    <section id="outputs" hidden>
+      <h2>Output files</h2>
+      <div class="meta"><span id="outTotal"></span></div>
+      <div id="outList"></div>
+      <video id="preview" controls playsinline hidden></video>
+      <div class="actions">
+        <button id="dlAll" class="primary">Download all</button>
+        <button id="clearAll" class="btn">Clear</button>
+      </div>
+      <p class="tip">Parts are kept in the app's private storage until you clear them. Everything runs on your device.</p>
+    </section>
+
+    <p class="tip">Keep the screen on and this tab open while compressing.</p>
+    <button id="install" class="ghost" hidden>Install app</button>
+  </div>
+
+  <!-- ================= WATERMARK ================= -->
+  <div id="wmMode" hidden>
+    <p class="sub">Add a camera-style badge to a photo. Original pixel size is kept.</p>
+
+    <label class="drop" id="wmDrop">
+      <input type="file" id="wmFile" accept="image/*" hidden>
+      <b id="wmDropTitle">Tap to choose a photo</b>
+      <small id="wmDropInfo">JPG, PNG, WebP, HEIC (if supported)</small>
+    </label>
+
+    <section id="wmSettings" hidden>
+      <canvas id="wmPrev"></canvas>
+
+      <h2>Badge</h2>
+      <div class="field"><label for="wmName">Device name</label><input type="text" id="wmName" value="Pixel 10 Pro XL" autocomplete="off"></div>
+      <div class="field"><label for="wmTags">Hashtags (small line)</label><input type="text" id="wmTags" value="#teampixel #deetechgadgets" autocomplete="off"></div>
+
+      <div class="row tog">
+        <div><b>Show G logo</b><small>Round logo on the left of the badge.</small></div>
+        <label class="sw"><input type="checkbox" id="wmLogo" checked><span></span></label>
+      </div>
+
+      <div class="field"><label for="wmPos">Position</label>
+        <select id="wmPos">
+          <option value="bl">Bottom left</option>
+          <option value="bc">Bottom center</option>
+          <option value="br">Bottom right</option>
+          <option value="tl">Top left</option>
+          <option value="tr">Top right</option>
+        </select>
+      </div>
+
+      <div class="lbl"><b>Size</b><small id="wmSizeV">100%</small></div>
+      <input type="range" id="wmSize" min="50" max="200" step="5" value="100">
+
+      <div class="lbl"><b>Badge opacity</b><small id="wmOpV">86%</small></div>
+      <input type="range" id="wmOp" min="30" max="100" step="2" value="86">
+
+      <div class="field"><label for="wmFmt">Save as</label>
+        <select id="wmFmt">
+          <option value="jpg98">JPEG — 98% quality</option>
+          <option value="jpg100">JPEG — 100% quality (larger)</option>
+          <option value="png">PNG — lossless (largest)</option>
+        </select>
+      </div>
+
+      <div class="plan" id="wmInfo"></div>
+
+      <div class="actions">
+        <button id="wmShare" class="primary">Share</button>
+        <button id="wmSave" class="btn">Save</button>
+      </div>
+      <p class="status" id="wmStatus"></p>
+    </section>
+  </div>
+
+  <p class="tip">Version <span id="ver"></span></p>
+</main>
+<script src="ffmpeg/ffmpeg.js"></script>
+<script src="app.js"></script>
+<script src="watermark.js"></script>
+</body>
+</html>
