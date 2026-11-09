@@ -3,6 +3,7 @@
 package com.amrnsyt.videosqueeze.ui
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -10,22 +11,29 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 // ---------- top bar ----------
@@ -75,6 +84,8 @@ fun EditorTopBar(actions: @Composable RowScope.() -> Unit) {
     )
 }
 
+// ---------- buttons ----------
+
 @Composable
 fun PrimaryPill(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     Button(
@@ -94,7 +105,83 @@ fun GhostPill(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, 
     }
 }
 
-// ---------- bottom sheet panel ----------
+/** Tall, thumb-friendly action button. primary = filled yellow, otherwise neutral outline. */
+@Composable
+fun BigButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    primary: Boolean = true,
+    loading: Boolean = false
+) {
+    val content: @Composable RowScope.() -> Unit = {
+        if (loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(Spacing.icon),
+                strokeWidth = Spacing.stroke,
+                color = LocalContentColor.current
+            )
+            Spacer(Modifier.width(Spacing.s))
+        }
+        Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    }
+    if (primary) {
+        Button(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = Spacing.cta), content = content)
+    } else {
+        OutlinedButton(
+            onClick = onClick,
+            enabled = enabled,
+            modifier = modifier.heightIn(min = Spacing.cta),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+            content = content
+        )
+    }
+}
+
+// ---------- bottom sheet ----------
+
+@Composable
+fun SheetHandle(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(bottom = Spacing.m),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = Spacing.handleW, height = Spacing.handleH)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.outline)
+        )
+    }
+}
+
+/** Rounded bottom sheet that grows and shrinks smoothly with its content. */
+@Composable
+fun Sheet(maxHeight: Dp, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize(),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.extraLarge.copy(
+            bottomStart = CornerSize(0.dp),
+            bottomEnd = CornerSize(0.dp)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .heightIn(max = maxHeight)
+                .padding(horizontal = Spacing.l)
+                .padding(top = Spacing.s)
+        ) {
+            SheetHandle()
+            content()
+        }
+    }
+}
 
 @Composable
 fun EditorPanel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
@@ -130,10 +217,12 @@ fun PanelTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modi
             )
             Box(
                 modifier = Modifier
+                    .defaultMinSize(minHeight = Spacing.chip)
                     .clip(CircleShape)
                     .background(bg)
                     .clickable { onSelect(i) }
-                    .padding(horizontal = Spacing.l, vertical = Spacing.s)
+                    .padding(horizontal = Spacing.l),
+                contentAlignment = Alignment.Center
             ) {
                 Text(label, color = fg, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
             }
@@ -165,7 +254,7 @@ fun PreviewEmptyState(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
-            PrimaryPill(primaryLabel, onPrimary, modifier = Modifier.padding(top = Spacing.s))
+            BigButton(primaryLabel, onPrimary, modifier = Modifier.fillMaxWidth().padding(top = Spacing.s))
             if (secondaryLabel != null) GhostPill(secondaryLabel, onSecondary)
         }
     }
@@ -177,8 +266,7 @@ private data class NavItem(val label: String, val icon: ImageVector)
 
 private val NavItems = listOf(
     NavItem("Compress", AppIcons.Compress),
-    NavItem("Watermark", AppIcons.Watermark),
-    NavItem("Studio", AppIcons.Studio)
+    NavItem("Watermark", AppIcons.Watermark)
 )
 
 @Composable
@@ -208,10 +296,11 @@ fun AppNavBar(selected: Int, onSelect: (Int) -> Unit) {
 private fun ChromePreview() {
     VideoSqueezeTheme {
         Column {
-            EditorTopBar { PrimaryPill("Save", {}) }
-            EditorPanel {
-                PanelTabs(listOf("Badge", "Style", "Export"), 0, {})
-                Text("Panel content", modifier = Modifier.padding(vertical = Spacing.xl))
+            EditorTopBar {}
+            Sheet(maxHeight = Spacing.panelMax * 2) {
+                PanelTabs(listOf("Quality", "Look"), 0, {})
+                Text("Sheet content", modifier = Modifier.padding(vertical = Spacing.xl))
+                BigButton("Compress to 32 MB", {})
             }
             AppNavBar(0, {})
         }

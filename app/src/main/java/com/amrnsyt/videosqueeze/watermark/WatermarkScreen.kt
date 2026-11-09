@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-
 package com.amrnsyt.videosqueeze.watermark
 
 import android.graphics.Bitmap
@@ -13,22 +11,22 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
@@ -39,7 +37,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -64,20 +61,22 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.amrnsyt.videosqueeze.ui.EditorPanel
+import com.amrnsyt.videosqueeze.ui.BigButton
+import com.amrnsyt.videosqueeze.ui.ChipScroller
 import com.amrnsyt.videosqueeze.ui.EditorTopBar
-import com.amrnsyt.videosqueeze.ui.GhostPill
 import com.amrnsyt.videosqueeze.ui.MediaTag
 import com.amrnsyt.videosqueeze.ui.PanelTabs
 import com.amrnsyt.videosqueeze.ui.PreviewEmptyState
-import com.amrnsyt.videosqueeze.ui.PrimaryPill
 import com.amrnsyt.videosqueeze.ui.SelectChip
+import com.amrnsyt.videosqueeze.ui.Sheet
 import com.amrnsyt.videosqueeze.ui.Spacing
 import com.amrnsyt.videosqueeze.ui.SwitchRow
 import com.amrnsyt.videosqueeze.ui.ValueSlider
 import com.amrnsyt.videosqueeze.ui.VideoSqueezeTheme
+import com.amrnsyt.videosqueeze.ui.tabTransition
 import com.amrnsyt.videosqueeze.util.ImageCache
 import com.amrnsyt.videosqueeze.util.Intents
 import com.amrnsyt.videosqueeze.util.Permissions
@@ -142,69 +141,66 @@ fun WatermarkContent(
         modifier = modifier,
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            EditorTopBar {
-                if (current != null) {
-                    GhostPill("Share", { onShare(current) }, enabled = !state.busy)
-                    PrimaryPill(if (state.busy) "Saving…" else "Save", { onSave(current) }, enabled = !state.busy)
-                }
-            }
-        }
+        topBar = { EditorTopBar {} }
     ) { inner ->
-        Column(modifier = Modifier.fillMaxSize().padding(inner)) {
-            if (photos.isEmpty()) {
-                Box(modifier = Modifier.weight(1f)) {
-                    if (hasAccess) {
-                        PreviewEmptyState(
-                            title = "No photos found",
-                            subtitle = "Take a photo or choose one manually.",
-                            primaryLabel = "Choose a photo",
-                            onPrimary = onPickOne
-                        )
-                    } else {
-                        PreviewEmptyState(
-                            title = "Swipe through your gallery",
-                            subtitle = "Allow access to your photos to preview the watermark on each one, live.",
-                            primaryLabel = "Allow gallery access",
-                            onPrimary = onRequestAccess,
-                            secondaryLabel = "Choose one photo instead",
-                            onSecondary = onPickOne
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(inner)) {
+            val sheetMax = maxHeight * 0.6f
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (photos.isEmpty()) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (hasAccess) {
+                            PreviewEmptyState(
+                                title = "No photos found",
+                                subtitle = "Take a photo or choose one manually.",
+                                primaryLabel = "Choose a photo",
+                                onPrimary = onPickOne
+                            )
+                        } else {
+                            PreviewEmptyState(
+                                title = "Swipe through your gallery",
+                                subtitle = "Allow access to your photos to preview the badge on each one, live.",
+                                primaryLabel = "Allow gallery access",
+                                onPrimary = onRequestAccess,
+                                secondaryLabel = "Choose one photo instead",
+                                onSecondary = onPickOne
+                            )
+                        }
+                    }
+                } else {
+                    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                        HorizontalPager(
+                            state = pagerState,
+                            modifier = Modifier.fillMaxSize(),
+                            beyondViewportPageCount = 1,
+                            pageSpacing = Spacing.m,
+                            key = { photos[it].uri.toString() }
+                        ) { page ->
+                            PhotoPage(photo = photos[page], options = options)
+                        }
+                        MediaTag(
+                            text = "${pagerState.currentPage + 1} / ${photos.size}",
+                            modifier = Modifier.align(Alignment.TopEnd).padding(Spacing.m)
                         )
                     }
-                }
-            } else {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier.fillMaxSize(),
-                        beyondViewportPageCount = 1,
-                        pageSpacing = Spacing.m,
-                        key = { photos[it].uri.toString() }
-                    ) { page ->
-                        PhotoPage(photo = photos[page], options = options)
-                    }
-                    MediaTag(
-                        text = "${pagerState.currentPage + 1} / ${photos.size}",
-                        modifier = Modifier.align(Alignment.TopEnd).padding(Spacing.m)
+
+                    Filmstrip(
+                        photos = photos,
+                        selected = pagerState.currentPage,
+                        onSelect = { i -> scope.launch { pagerState.animateScrollToPage(i) } }
+                    )
+
+                    WatermarkSheet(
+                        options = options,
+                        busy = state.busy,
+                        message = state.message,
+                        tab = tab,
+                        onTab = { tab = it },
+                        onChange = onChange,
+                        onSave = { current?.let(onSave) },
+                        onShare = { current?.let(onShare) },
+                        sheetMax = sheetMax
                     )
                 }
-
-                Filmstrip(
-                    photos = photos,
-                    selected = pagerState.currentPage,
-                    onSelect = { i -> scope.launch { pagerState.animateScrollToPage(i) } }
-                )
-
-                AnimatedVisibility(visible = state.message != null, enter = fadeIn(), exit = fadeOut()) {
-                    Text(
-                        text = state.message.orEmpty(),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = Spacing.l, vertical = Spacing.xs)
-                    )
-                }
-
-                WatermarkPanel(options = options, tab = tab, onTab = { tab = it }, onChange = onChange)
             }
         }
     }
@@ -217,6 +213,9 @@ private fun PhotoPage(photo: GalleryPhoto, options: BadgeOptions, modifier: Modi
     val bmp by produceState<Bitmap?>(initialValue = null, photo.uri) {
         value = withContext(Dispatchers.IO) { ImageCache.load(context, photo.uri, PREVIEW_PX) }
     }
+    val meta by produceState<PhotoMeta?>(initialValue = null, photo.uri) {
+        value = withContext(Dispatchers.IO) { ExifReader.read(context, photo.uri) }
+    }
     Box(modifier = modifier.fillMaxSize().padding(horizontal = Spacing.s), contentAlignment = Alignment.Center) {
         Crossfade(targetState = bmp, animationSpec = tween(250), label = "photo") { b ->
             if (b == null) {
@@ -225,11 +224,7 @@ private fun PhotoPage(photo: GalleryPhoto, options: BadgeOptions, modifier: Modi
                 }
             } else {
                 val img = remember(b) { b.asImageBitmap() }
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Box(
                         modifier = Modifier
                             .aspectRatio(b.width.toFloat() / b.height)
@@ -238,7 +233,7 @@ private fun PhotoPage(photo: GalleryPhoto, options: BadgeOptions, modifier: Modi
                         Image(img, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             drawIntoCanvas { c ->
-                                BadgeRenderer.draw(c.nativeCanvas, size.width.toInt(), size.height.toInt(), options)
+                                BadgeRenderer.draw(c.nativeCanvas, size.width.toInt(), size.height.toInt(), options, meta)
                             }
                         }
                     }
@@ -288,27 +283,30 @@ private fun Thumb(photo: GalleryPhoto, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+// ---------- sheet ----------
+
 @Composable
-private fun WatermarkPanel(
+private fun WatermarkSheet(
     options: BadgeOptions,
+    busy: Boolean,
+    message: String?,
     tab: Int,
     onTab: (Int) -> Unit,
-    onChange: ((BadgeOptions) -> BadgeOptions) -> Unit
+    onChange: ((BadgeOptions) -> BadgeOptions) -> Unit,
+    onSave: () -> Unit,
+    onShare: () -> Unit,
+    sheetMax: Dp
 ) {
-    EditorPanel(modifier = Modifier.heightIn(max = Spacing.panelMax)) {
+    Sheet(maxHeight = sheetMax) {
         PanelTabs(listOf("Badge", "Style", "Export"), tab, onTab)
         Column(
             modifier = Modifier
                 .weight(1f, fill = false)
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = Spacing.l)
+                .padding(top = Spacing.m)
         ) {
-            AnimatedContent(
-                targetState = tab,
-                transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(120)) },
-                label = "wmTab"
-            ) { t ->
-                Column(modifier = Modifier.padding(top = Spacing.m)) {
+            AnimatedContent(targetState = tab, transitionSpec = tabTransition(), label = "wmTab") { t ->
+                Column {
                     when (t) {
                         0 -> BadgeTab(options, onChange)
                         1 -> StyleTab(options, onChange)
@@ -317,38 +315,106 @@ private fun WatermarkPanel(
                 }
             }
         }
+        AnimatedVisibility(visible = message != null, enter = fadeIn(tween(200)), exit = fadeOut(tween(150))) {
+            Text(
+                text = message.orEmpty(),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = Spacing.s)
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Spacing.s, bottom = Spacing.m),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s)
+        ) {
+            BigButton("Share", onShare, modifier = Modifier.weight(1f), enabled = !busy, primary = false)
+            BigButton(
+                if (busy) "Saving…" else "Save",
+                onSave,
+                modifier = Modifier.weight(1.4f),
+                enabled = !busy,
+                loading = busy
+            )
+        }
     }
 }
 
 @Composable
 private fun BadgeTab(options: BadgeOptions, onChange: ((BadgeOptions) -> BadgeOptions) -> Unit) {
+    ChipScroller {
+        BadgeStyle.entries.forEach { st ->
+            SelectChip(
+                text = st.label,
+                selected = options.style == st,
+                onClick = {
+                    onChange {
+                        val pos = when {
+                            st == BadgeStyle.Centered && it.position == BadgePosition.BottomLeft -> BadgePosition.BottomCenter
+                            st == BadgeStyle.Pill && it.position == BadgePosition.BottomCenter -> BadgePosition.BottomLeft
+                            else -> it.position
+                        }
+                        it.copy(style = st, position = pos)
+                    }
+                }
+            )
+        }
+    }
     OutlinedTextField(
         value = options.name,
         onValueChange = { v -> onChange { it.copy(name = v) } },
         label = { Text("Device name") },
         singleLine = true,
         shape = MaterialTheme.shapes.medium,
-        modifier = Modifier.fillMaxWidth()
-    )
-    OutlinedTextField(
-        value = options.tags,
-        onValueChange = { v -> onChange { it.copy(tags = v) } },
-        label = { Text("Hashtags (small line)") },
-        singleLine = true,
-        shape = MaterialTheme.shapes.medium,
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = Spacing.m)
     )
+    AnimatedVisibility(visible = options.style == BadgeStyle.Pill) {
+        OutlinedTextField(
+            value = options.tags,
+            onValueChange = { v -> onChange { it.copy(tags = v) } },
+            label = { Text("Hashtags (small line)") },
+            singleLine = true,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Spacing.m)
+        )
+    }
+    AnimatedVisibility(visible = options.style == BadgeStyle.Centered) {
+        Column {
+            OutlinedTextField(
+                value = options.info,
+                onValueChange = { v -> onChange { it.copy(info = v) } },
+                label = { Text("Details line") },
+                placeholder = { Text("Blank = read from the photo") },
+                singleLine = true,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = Spacing.m)
+            )
+            SwitchRow(
+                title = "Show date and time",
+                subtitle = "Taken from the photo's own data.",
+                checked = options.showDate,
+                onCheckedChange = { v -> onChange { it.copy(showDate = v) } },
+                modifier = Modifier.padding(top = Spacing.s)
+            )
+        }
+    }
     SwitchRow(
         title = "Show G logo",
-        subtitle = "Round logo on the left of the badge.",
+        subtitle = "Google logo in a white circle.",
         checked = options.showLogo,
         onCheckedChange = { v -> onChange { it.copy(showLogo = v) } },
         modifier = Modifier.padding(top = Spacing.s)
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StyleTab(options: BadgeOptions, onChange: ((BadgeOptions) -> BadgeOptions) -> Unit) {
     FlowRow(
@@ -377,10 +443,7 @@ private fun StyleTab(options: BadgeOptions, onChange: ((BadgeOptions) -> BadgeOp
 
 @Composable
 private fun ExportTab(options: BadgeOptions, onChange: ((BadgeOptions) -> BadgeOptions) -> Unit) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
-        verticalArrangement = Arrangement.spacedBy(Spacing.s)
-    ) {
+    ChipScroller {
         ExportFormat.entries.forEach { f ->
             SelectChip(f.label, options.format == f, { onChange { it.copy(format = f) } })
         }

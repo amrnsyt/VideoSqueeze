@@ -71,6 +71,15 @@ class VideoViewModel(app: Application) : AndroidViewModel(app) {
     fun setEnhance(on: Boolean) = _settings.update { it.copy(enhance = on) }
     fun setEnhanceStrength(v: Float) = _settings.update { it.copy(enhanceStrength = v) }
     fun setSmooth(on: Boolean) = _settings.update { it.copy(smooth = on) }
+    fun setVivid(on: Boolean) = _settings.update { it.copy(vivid = on) }
+    fun setVSat(v: Float) = _settings.update { it.copy(vSat = v) }
+    fun setVVib(v: Float) = _settings.update { it.copy(vVib = v) }
+    fun setVCon(v: Float) = _settings.update { it.copy(vCon = v) }
+    fun setVBri(v: Float) = _settings.update { it.copy(vBri = v) }
+    fun resetVivid() = _settings.update {
+        val d = VideoSettings()
+        it.copy(vSat = d.vSat, vVib = d.vVib, vCon = d.vCon, vBri = d.vBri)
+    }
 
     // ---------- picking ----------
     fun onPicked(uri: Uri?) {
@@ -150,10 +159,10 @@ class VideoViewModel(app: Application) : AndroidViewModel(app) {
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        if (plan.blend || plan.enhance > 0f) {
+                        if (plan.blend || plan.enhance > 0f || plan.vivid != null) {
                             // Effects are not supported on this phone: redo this pass without them.
-                            note = "Enhance/Smooth isn't supported on this phone, so the video was exported without it."
-                            settings = settings.copy(smooth = false, enhance = false)
+                            note = "Enhance, Smooth or Vivid isn't supported on this phone, so the video was exported without it."
+                            settings = settings.copy(smooth = false, enhance = false, vivid = false)
                             plan = Planner.plan(meta, settings, factor)
                             out.delete()
                             _state.value = VideoUiState.Working(meta, pass, 0f)
@@ -229,7 +238,7 @@ class VideoViewModel(app: Application) : AndroidViewModel(app) {
 
         val effects = buildList<Effect> {
             add(Presentation.createForWidthAndHeight(plan.width, plan.height, Presentation.LAYOUT_SCALE_TO_FIT))
-            if (plan.enhance > 0f || plan.blend) add(ProcessEffect(plan.blend, plan.enhance))
+            if (plan.enhance > 0f || plan.blend || plan.vivid != null) add(ProcessEffect(plan.blend, plan.enhance, plan.vivid))
             if (plan.dropFrames) add(FrameDropEffect.createDefaultFrameDropEffect(plan.fps.toFloat()))
         }
         val item = EditedMediaItem.Builder(MediaItem.fromUri(meta.uri))
@@ -238,7 +247,7 @@ class VideoViewModel(app: Application) : AndroidViewModel(app) {
 
         transformer.start(item, out.absolutePath)
 
-        val risky = plan.blend || plan.enhance > 0f
+        val risky = plan.blend || plan.enhance > 0f || plan.vivid != null
         val poller = viewModelScope.launch {
             val holder = ProgressHolder()
             var last = -1f

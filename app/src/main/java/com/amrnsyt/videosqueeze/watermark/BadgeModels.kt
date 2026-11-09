@@ -12,6 +12,11 @@ enum class BadgePosition(val label: String) {
     TopRight("Top right")
 }
 
+enum class BadgeStyle(val label: String) {
+    Pill("Pill"),
+    Centered("Centered")
+}
+
 enum class ExportFormat(
     val label: String,
     val ext: String,
@@ -26,13 +31,16 @@ enum class ExportFormat(
 
 @Immutable
 data class BadgeOptions(
-    val name: String = "Pixel 10 Pro XL",
+    val name: String = "Pixel 9 Pro XL",
     val tags: String = "#teampixel #deetechgadgets",
     val showLogo: Boolean = true,
     val position: BadgePosition = BadgePosition.BottomLeft,
     val sizePct: Float = 100f,
     val opacityPct: Float = 86f,
-    val format: ExportFormat = ExportFormat.Jpeg98
+    val format: ExportFormat = ExportFormat.Jpeg98,
+    val style: BadgeStyle = BadgeStyle.Pill,
+    val info: String = "",
+    val showDate: Boolean = true
 )
 
 @Immutable

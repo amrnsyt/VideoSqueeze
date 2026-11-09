@@ -45,8 +45,17 @@ data class VideoSettings(
     val fpsIndex: Int = 4,
     val enhance: Boolean = true,
     val enhanceStrength: Float = 50f,
-    val smooth: Boolean = true
+    val smooth: Boolean = true,
+    val vivid: Boolean = false,
+    val vSat: Float = 130f,
+    val vVib: Float = 30f,
+    val vCon: Float = 105f,
+    val vBri: Float = 0f
 )
+
+/** Manual vivid color, as multipliers (sat 1.3 = +30%, vib -1..1, con 1.05, bri -0.2..0.2). */
+@Immutable
+data class VividParams(val sat: Float, val vib: Float, val con: Float, val bri: Float)
 
 @Immutable
 data class Plan(
@@ -59,7 +68,8 @@ data class Plan(
     val reduced: Boolean,
     val tooSmall: Boolean,
     val blend: Boolean,
-    val enhance: Float
+    val enhance: Float,
+    val vivid: VividParams?
 )
 
 @Immutable
@@ -135,7 +145,8 @@ object Planner {
             reduced = reduced,
             tooSmall = vbps <= 80_000.0,
             blend = blend,
-            enhance = if (s.enhance) (s.enhanceStrength / 100f).coerceIn(0f, 1f) else 0f
+            enhance = if (s.enhance) (s.enhanceStrength / 100f).coerceIn(0f, 1f) else 0f,
+            vivid = if (s.vivid) VividParams(s.vSat / 100f, s.vVib / 100f, s.vCon / 100f, s.vBri / 100f) else null
         )
     }
 }

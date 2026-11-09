@@ -17,6 +17,11 @@ object Spacing {
     val stroke = 2.dp
     val thumb = 56.dp
     val panelMax = 340.dp
+    val cta = 56.dp
+    val chip = 40.dp
+    val icon = 20.dp
+    val handleW = 36.dp
+    val handleH = 4.dp
 }
 
 private val AppColors = darkColorScheme(

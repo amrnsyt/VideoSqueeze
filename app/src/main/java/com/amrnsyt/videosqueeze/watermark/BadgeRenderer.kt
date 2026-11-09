@@ -14,7 +14,88 @@ import kotlin.math.min
  */
 object BadgeRenderer {
 
-    fun draw(canvas: Canvas, w: Int, h: Int, o: BadgeOptions) {
+    fun draw(canvas: Canvas, w: Int, h: Int, o: BadgeOptions, meta: PhotoMeta? = null) {
+        if (o.style == BadgeStyle.Centered) drawCentered(canvas, w, h, o, meta) else drawPill(canvas, w, h, o)
+    }
+
+    /**
+     * Centered style (camera-brand look): logo, device name, lens details and date,
+     * stacked and centered, white text with a soft shadow. No background pill.
+     */
+    private fun drawCentered(canvas: Canvas, w: Int, h: Int, o: BadgeOptions, meta: PhotoMeta?) {
+        val s = min(w, h).toFloat()
+        val u = s * 0.0327f * (o.sizePct / 100f)
+        val m = s * 0.0275f
+
+        val name = o.name.ifBlank { "Pixel 9 Pro XL" }.uppercase()
+        val info = o.info.trim().ifEmpty { meta?.info.orEmpty() }
+        val date = if (o.showDate) meta?.date.orEmpty() else ""
+
+        val opacity = (o.opacityPct / 100f).coerceIn(0.35f, 1f)
+        val shadowColor = Color.argb((150 * opacity).toInt(), 0, 0, 0)
+
+        fun textPaint(size: Float, medium: Boolean, alpha: Float, spacing: Float) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = Typeface.create(if (medium) "sans-serif-medium" else "sans-serif", Typeface.NORMAL)
+            textSize = size
+            color = Color.argb((255 * opacity * alpha).toInt(), 255, 255, 255)
+            letterSpacing = spacing
+            textAlign = Paint.Align.CENTER
+            setShadowLayer(u * 0.12f, 0f, u * 0.04f, shadowColor)
+        }
+        val namePaint = textPaint(u * 0.66f, true, 1f, 0.06f)
+        val infoPaint = textPaint(u * 0.51f, false, 0.92f, 0.05f)
+        val datePaint = textPaint(u * 0.50f, false, 0.85f, 0.05f)
+
+        // rows from top to bottom: L = logo, N = name, I = lens details, D = date
+        val rows = ArrayList<Char>()
+        if (o.showLogo) rows.add('L')
+        rows.add('N')
+        if (info.isNotEmpty()) rows.add('I')
+        if (date.isNotEmpty()) rows.add('D')
+
+        fun pitch(upper: Char): Float = when (upper) {
+            'L' -> 1.82f * u
+            'N' -> 1.14f * u
+            else -> 0.89f * u
+        }
+        val offsets = FloatArray(rows.size)
+        for (i in 1 until rows.size) offsets[i] = offsets[i - 1] + pitch(rows[i - 1])
+        val total = offsets.last()
+
+        val logoR = u * 0.84f
+        val maxW = max(
+            max(namePaint.measureText(name), if (info.isNotEmpty()) infoPaint.measureText(info) else 0f),
+            max(if (date.isNotEmpty()) datePaint.measureText(date) else 0f, if (o.showLogo) logoR * 2f else 0f)
+        )
+
+        val cx = when (o.position) {
+            BadgePosition.BottomLeft, BadgePosition.TopLeft -> m + maxW / 2f
+            BadgePosition.BottomRight, BadgePosition.TopRight -> w - m - maxW / 2f
+            BadgePosition.BottomCenter -> w / 2f
+        }
+        val top = o.position == BadgePosition.TopLeft || o.position == BadgePosition.TopRight
+        val firstY = if (top) u * 1.0f + (if (rows[0] == 'L') logoR else u * 0.35f)
+        else h - u * 1.5f - total
+
+        val logoPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            setShadowLayer(u * 0.14f, 0f, u * 0.05f, shadowColor)
+        }
+        rows.forEachIndexed { i, kind ->
+            val y = firstY + offsets[i]
+            when (kind) {
+                'L' -> {
+                    canvas.drawCircle(cx, y, logoR, logoPaint)
+                    drawG(canvas, cx, y, logoR * 0.62f)
+                }
+                'N' -> canvas.drawText(name, cx, y + namePaint.textSize * 0.35f, namePaint)
+                'I' -> canvas.drawText(info, cx, y + infoPaint.textSize * 0.35f, infoPaint)
+                else -> canvas.drawText(date, cx, y + datePaint.textSize * 0.35f, datePaint)
+            }
+        }
+    }
+
+    private fun drawPill(canvas: Canvas, w: Int, h: Int, o: BadgeOptions) {
         val s = min(w, h).toFloat()
         val hh = s * 0.0327f * (o.sizePct / 100f)   // badge height
         val m = s * 0.0275f                           // edge margin
@@ -25,7 +106,7 @@ object BadgeRenderer {
         val gap = hh * 0.2f
         val padR = hh * 0.42f
 
-        val name = o.name.ifBlank { "Pixel 10 Pro XL" }
+        val name = o.name.ifBlank { "Pixel 9 Pro XL" }
         val tags = o.tags.trim()
 
         val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {

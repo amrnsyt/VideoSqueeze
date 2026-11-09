@@ -53,24 +53,4 @@ object AppIcons {
             moveTo(8f, 15f); lineTo(14f, 15f)
         }.build()
     }
-
-    /** Film strip: a frame cut into parts. */
-    val Studio: ImageVector by lazy {
-        ImageVector.Builder(
-            name = "studio",
-            defaultWidth = 24.dp,
-            defaultHeight = 24.dp,
-            viewportWidth = 24f,
-            viewportHeight = 24f
-        ).path(
-            stroke = SolidColor(Color.Black),
-            strokeLineWidth = 2f,
-            strokeLineCap = StrokeCap.Round,
-            strokeLineJoin = StrokeJoin.Round
-        ) {
-            moveTo(4f, 5f); lineTo(20f, 5f); lineTo(20f, 19f); lineTo(4f, 19f); close()
-            moveTo(9f, 5f); lineTo(9f, 19f)
-            moveTo(15f, 5f); lineTo(15f, 19f)
-        }.build()
-    }
 }

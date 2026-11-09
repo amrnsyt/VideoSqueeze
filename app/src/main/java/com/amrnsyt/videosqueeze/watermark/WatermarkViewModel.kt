@@ -50,7 +50,10 @@ class WatermarkViewModel(app: Application) : AndroidViewModel(app) {
             position = BadgePosition.entries.getOrElse(prefs.getInt("pos", 0)) { d.position },
             sizePct = prefs.getFloat("size", d.sizePct),
             opacityPct = prefs.getFloat("opacity", d.opacityPct),
-            format = ExportFormat.entries.getOrElse(prefs.getInt("fmt", 0)) { d.format }
+            format = ExportFormat.entries.getOrElse(prefs.getInt("fmt", 0)) { d.format },
+            style = BadgeStyle.entries.getOrElse(prefs.getInt("style", 0)) { d.style },
+            info = prefs.getString("info", d.info) ?: d.info,
+            showDate = prefs.getBoolean("date", d.showDate)
         )
     }
 
@@ -63,6 +66,9 @@ class WatermarkViewModel(app: Application) : AndroidViewModel(app) {
             .putFloat("size", o.sizePct)
             .putFloat("opacity", o.opacityPct)
             .putInt("fmt", o.format.ordinal)
+            .putInt("style", o.style.ordinal)
+            .putString("info", o.info)
+            .putBoolean("date", o.showDate)
             .apply()
     }
 
@@ -124,7 +130,8 @@ class WatermarkViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     val w = bmp.width
                     val h = bmp.height
-                    BadgeRenderer.draw(Canvas(bmp), w, h, o)
+                    val meta = ExifReader.read(app, photo.uri)
+                    BadgeRenderer.draw(Canvas(bmp), w, h, o, meta)
                     val fmt = o.format
                     val displayName = photo.name.substringBeforeLast('.') + "_wm." + fmt.ext
                     val uri = MediaSaver.saveImage(app, bmp, displayName, fmt.mime, fmt.compress, fmt.quality)

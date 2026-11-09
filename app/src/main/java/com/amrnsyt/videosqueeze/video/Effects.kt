@@ -17,20 +17,23 @@ import java.util.concurrent.Executor
 /**
  * One GPU effect that can do two things:
  *  - Enhance: unsharp-mask sharpening plus an HDR-style tone and colour look.
+ *  - Vivid color: manual saturation / vibrance / contrast / brightness.
  *  - Smooth: inserts a blended frame between every pair of frames (2x frame rate).
  */
 class ProcessEffect(
     private val blend: Boolean,
-    private val strength: Float
+    private val strength: Float,
+    private val vivid: VividParams?
 ) : GlEffect {
     override fun toGlShaderProgram(context: Context, useHdr: Boolean): GlShaderProgram =
-        ProcessProgram(useHdr, blend, strength)
+        ProcessProgram(useHdr, blend, strength, vivid)
 }
 
 private class ProcessProgram(
     private val useHdr: Boolean,
     private val blend: Boolean,
-    strength: Float
+    strength: Float,
+    private val vivid: VividParams?
 ) : GlShaderProgram {
 
     private val sharp = 0.8f * strength
@@ -174,6 +177,12 @@ private class ProcessProgram(
         p.setFloatUniform("uMix", mix)
         p.setFloatUniform("uSharp", if (enhance) sharp else 0f)
         p.setFloatUniform("uLook", if (enhance) look else 0f)
+        val v = if (enhance) vivid else null
+        p.setFloatUniform("uVivid", if (v != null) 1f else 0f)
+        p.setFloatUniform("uVSat", v?.sat ?: 1f)
+        p.setFloatUniform("uVVib", v?.vib ?: 0f)
+        p.setFloatUniform("uVCon", v?.con ?: 1f)
+        p.setFloatUniform("uVBri", v?.bri ?: 0f)
         p.setFloatsUniform("uTexel", floatArrayOf(1f / target.width, 1f / target.height))
         p.bindAttributesAndUniforms()
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
@@ -210,6 +219,11 @@ uniform float uMix;
 uniform vec2 uTexel;
 uniform float uSharp;
 uniform float uLook;
+uniform float uVivid;
+uniform float uVSat;
+uniform float uVVib;
+uniform float uVCon;
+uniform float uVBri;
 varying vec2 vTexSamplingCoord;
 
 vec3 fetch(sampler2D t, vec2 uv) {
@@ -240,6 +254,19 @@ vec3 hdrLook(vec3 c, float k) {
   return mix(vec3(l2), c, boost);
 }
 
+// Manual vivid color: brightness, contrast, saturation, then vibrance (boosts dull colors more).
+vec3 vividColor(vec3 c) {
+  c = c + uVBri;
+  c = (c - 0.5) * uVCon + 0.5;
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c = mix(vec3(l), c, uVSat);
+  float mx = max(c.r, max(c.g, c.b));
+  float mn = min(c.r, min(c.g, c.b));
+  float boost = 1.0 + uVVib * (1.0 - (mx - mn));
+  float l2 = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  return mix(vec3(l2), c, boost);
+}
+
 void main() {
   vec3 c;
   if (uMix >= 1.0) {
@@ -249,6 +276,9 @@ void main() {
   }
   if (uLook > 0.0) {
     c = hdrLook(c, uLook);
+  }
+  if (uVivid > 0.5) {
+    c = vividColor(c);
   }
   gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
 }

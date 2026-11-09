@@ -3,11 +3,15 @@ package com.amrnsyt.videosqueeze.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -173,13 +177,28 @@ fun SelectChip(
     )
     Box(
         modifier = modifier
+            .defaultMinSize(minHeight = Spacing.chip)
             .clip(CircleShape)
             .background(bg)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = Spacing.l, vertical = Spacing.s)
+            .padding(horizontal = Spacing.l),
+        contentAlignment = Alignment.Center
     ) {
         Text(text, color = fg, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
     }
+}
+
+/** One horizontally scrollable row of chips (keeps long lists on a single clean line). */
+@Composable
+fun ChipScroller(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
+    )
 }
 
 /** Small translucent label shown on top of a preview. */
