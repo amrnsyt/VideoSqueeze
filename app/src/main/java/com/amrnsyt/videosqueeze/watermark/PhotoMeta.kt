@@ -33,7 +33,8 @@ object ExifReader {
                 parts.add(if (exposure < 1.0) "1/${(1.0 / exposure).roundToInt()}s" else trim(exposure) + "s")
             }
 
-            val iso = exif.getAttributeInt(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY, 0)
+            // "ISOSpeedRatings" is the EXIF name of the ISO tag in the framework reader
+            val iso = exif.getAttributeInt("ISOSpeedRatings", 0)
             if (iso > 0) parts.add("ISO$iso")
 
             val rawDate = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
