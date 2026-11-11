@@ -9,18 +9,81 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Draws the camera-style badge. Everything scales from the shorter image side,
+ * Draws the badge. Everything scales from the shorter image side,
  * so a small preview looks identical to the full-resolution export.
  */
 object BadgeRenderer {
 
     fun draw(canvas: Canvas, w: Int, h: Int, o: BadgeOptions, meta: PhotoMeta? = null) {
-        if (o.style == BadgeStyle.Centered) drawCentered(canvas, w, h, o, meta) else drawPill(canvas, w, h, o)
+        if (o.style == BadgeStyle.Centered) drawCentered(canvas, w, h, o, meta) else drawPill(canvas, w, h, o, meta)
     }
 
+    // ---------- shared helpers ----------
+
+    private fun withAlpha(color: Int, a: Float): Int =
+        Color.argb((Color.alpha(color) * a).toInt().coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color))
+
+    private fun basePaint(size: Float, medium: Boolean, spacing: Float, align: Paint.Align) =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = Typeface.create(if (medium) "sans-serif-medium" else "sans-serif", Typeface.NORMAL)
+            textSize = size
+            letterSpacing = spacing
+            textAlign = align
+        }
+
+    /** Text with the user's color, optional outline and optional shadow. */
+    private fun styledText(
+        canvas: Canvas,
+        text: String,
+        x: Float,
+        y: Float,
+        base: Paint,
+        o: BadgeOptions,
+        u: Float,
+        alpha: Float
+    ) {
+        val a = alpha.coerceIn(0f, 1f)
+        val fill = Paint(base).apply {
+            style = Paint.Style.FILL
+            color = withAlpha(o.textColor, a)
+        }
+        val outline = if (o.outlineOn) {
+            Paint(base).apply {
+                style = Paint.Style.STROKE
+                strokeJoin = Paint.Join.ROUND
+                strokeWidth = u * (0.05f + 0.20f * o.outlineWidth / 100f)
+                color = withAlpha(o.outlineColor, a)
+            }
+        } else null
+        if (o.shadowOn) {
+            val k = (o.shadowStrength / 100f).coerceIn(0f, 1f)
+            val shadowPaint = outline ?: fill
+            shadowPaint.setShadowLayer(
+                u * (0.04f + 0.30f * k),
+                0f,
+                u * (0.03f + 0.06f * k),
+                withAlpha(o.shadowColor, (0.35f + 0.6f * k) * a)
+            )
+        }
+        if (outline != null) canvas.drawText(text, x, y, outline)
+        canvas.drawText(text, x, y, fill)
+    }
+
+    /** Text of the location row, or empty when location is off or unknown. */
+    private fun locationLabel(o: BadgeOptions, meta: PhotoMeta?): String {
+        if (!o.showLocation) return ""
+        val custom = o.locationText.trim()
+        if (custom.isNotEmpty()) return custom
+        if (meta == null) return ""
+        val coords = meta.coordinates()
+        return if (o.locationMode == LocationMode.Place) meta.place.ifBlank { coords } else coords
+    }
+
+    // ---------- Centered style ----------
+
     /**
-     * Centered style (camera-brand look): logo, device name, lens details and date,
-     * stacked and centered, white text with a soft shadow. No background pill.
+     * Camera-brand look: logo, device name, lens details, date and location,
+     * stacked and centered, with no background pill.
      */
     private fun drawCentered(canvas: Canvas, w: Int, h: Int, o: BadgeOptions, meta: PhotoMeta?) {
         val s = min(w, h).toFloat()
@@ -28,30 +91,23 @@ object BadgeRenderer {
         val m = s * 0.0275f
 
         val name = o.name.ifBlank { "Pixel 9 Pro XL" }.uppercase()
-        val info = o.info.trim().ifEmpty { meta?.info.orEmpty() }
+        val info = if (o.showDetails) o.info.trim().ifEmpty { meta?.info.orEmpty() } else ""
         val date = if (o.showDate) meta?.date.orEmpty() else ""
+        val place = locationLabel(o, meta)
 
         val opacity = (o.opacityPct / 100f).coerceIn(0.35f, 1f)
-        val shadowColor = Color.argb((150 * opacity).toInt(), 0, 0, 0)
+        val namePaint = basePaint(u * 0.66f, true, 0.06f, Paint.Align.CENTER)
+        val infoPaint = basePaint(u * 0.51f, false, 0.05f, Paint.Align.CENTER)
+        val datePaint = basePaint(u * 0.50f, false, 0.05f, Paint.Align.CENTER)
+        val placePaint = basePaint(u * 0.50f, false, 0.04f, Paint.Align.CENTER)
 
-        fun textPaint(size: Float, medium: Boolean, alpha: Float, spacing: Float) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            typeface = Typeface.create(if (medium) "sans-serif-medium" else "sans-serif", Typeface.NORMAL)
-            textSize = size
-            color = Color.argb((255 * opacity * alpha).toInt(), 255, 255, 255)
-            letterSpacing = spacing
-            textAlign = Paint.Align.CENTER
-            setShadowLayer(u * 0.12f, 0f, u * 0.04f, shadowColor)
-        }
-        val namePaint = textPaint(u * 0.66f, true, 1f, 0.06f)
-        val infoPaint = textPaint(u * 0.51f, false, 0.92f, 0.05f)
-        val datePaint = textPaint(u * 0.50f, false, 0.85f, 0.05f)
-
-        // rows from top to bottom: L = logo, N = name, I = lens details, D = date
+        // rows from top to bottom: L = logo, N = name, I = details, D = date, P = place
         val rows = ArrayList<Char>()
         if (o.showLogo) rows.add('L')
         rows.add('N')
         if (info.isNotEmpty()) rows.add('I')
         if (date.isNotEmpty()) rows.add('D')
+        if (place.isNotEmpty()) rows.add('P')
 
         fun pitch(upper: Char): Float = when (upper) {
             'L' -> 1.82f * u
@@ -63,10 +119,13 @@ object BadgeRenderer {
         val total = offsets.last()
 
         val logoR = u * 0.84f
-        val maxW = max(
-            max(namePaint.measureText(name), if (info.isNotEmpty()) infoPaint.measureText(info) else 0f),
-            max(if (date.isNotEmpty()) datePaint.measureText(date) else 0f, if (o.showLogo) logoR * 2f else 0f)
-        )
+        val maxW = listOf(
+            namePaint.measureText(name),
+            if (info.isNotEmpty()) infoPaint.measureText(info) else 0f,
+            if (date.isNotEmpty()) datePaint.measureText(date) else 0f,
+            if (place.isNotEmpty()) placePaint.measureText(place) else 0f,
+            if (o.showLogo) logoR * 2f else 0f
+        ).max()
 
         val cx = when (o.position) {
             BadgePosition.BottomLeft, BadgePosition.TopLeft -> m + maxW / 2f
@@ -79,7 +138,10 @@ object BadgeRenderer {
 
         val logoPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            setShadowLayer(u * 0.14f, 0f, u * 0.05f, shadowColor)
+            if (o.shadowOn) {
+                val k = (o.shadowStrength / 100f).coerceIn(0f, 1f)
+                setShadowLayer(u * (0.06f + 0.24f * k), 0f, u * 0.05f, withAlpha(o.shadowColor, (0.35f + 0.6f * k) * opacity))
+            }
         }
         rows.forEachIndexed { i, kind ->
             val y = firstY + offsets[i]
@@ -88,14 +150,17 @@ object BadgeRenderer {
                     canvas.drawCircle(cx, y, logoR, logoPaint)
                     drawG(canvas, cx, y, logoR * 0.62f)
                 }
-                'N' -> canvas.drawText(name, cx, y + namePaint.textSize * 0.35f, namePaint)
-                'I' -> canvas.drawText(info, cx, y + infoPaint.textSize * 0.35f, infoPaint)
-                else -> canvas.drawText(date, cx, y + datePaint.textSize * 0.35f, datePaint)
+                'N' -> styledText(canvas, name, cx, y + namePaint.textSize * 0.35f, namePaint, o, u, opacity)
+                'I' -> styledText(canvas, info, cx, y + infoPaint.textSize * 0.35f, infoPaint, o, u, opacity * 0.92f)
+                'D' -> styledText(canvas, date, cx, y + datePaint.textSize * 0.35f, datePaint, o, u, opacity * 0.85f)
+                else -> styledText(canvas, place, cx, y + placePaint.textSize * 0.35f, placePaint, o, u, opacity * 0.85f)
             }
         }
     }
 
-    private fun drawPill(canvas: Canvas, w: Int, h: Int, o: BadgeOptions) {
+    // ---------- Pill style ----------
+
+    private fun drawPill(canvas: Canvas, w: Int, h: Int, o: BadgeOptions, meta: PhotoMeta?) {
         val s = min(w, h).toFloat()
         val hh = s * 0.0327f * (o.sizePct / 100f)   // badge height
         val m = s * 0.0275f                           // edge margin
@@ -107,21 +172,16 @@ object BadgeRenderer {
         val padR = hh * 0.42f
 
         val name = o.name.ifBlank { "Pixel 9 Pro XL" }
-        val tags = o.tags.trim()
+        val second = listOfNotNull(
+            if (o.showDetails) o.tags.trim().ifEmpty { null } else null,
+            locationLabel(o, meta).ifEmpty { null }
+        ).joinToString("  ·  ")
 
-        val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            textSize = f1
-            color = Color.WHITE
-        }
-        val tagPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-            textSize = f2
-            color = Color.argb(140, 255, 255, 255)
-        }
+        val namePaint = basePaint(f1, true, 0f, Paint.Align.LEFT)
+        val tagPaint = basePaint(f2, false, 0f, Paint.Align.LEFT)
 
         val w1 = namePaint.measureText(name)
-        val w2 = if (tags.isNotEmpty()) tagPaint.measureText(tags) else 0f
+        val w2 = if (second.isNotEmpty()) tagPaint.measureText(second) else 0f
         val left = if (o.showLogo) padL + circ + gap else hh * 0.45f
         val pw = left + max(w1, w2) + padR
 
@@ -149,11 +209,11 @@ object BadgeRenderer {
         }
 
         val tx = x + left
-        if (tags.isNotEmpty()) {
-            canvas.drawText(name, tx, y + hh * 0.5f, namePaint)
-            canvas.drawText(tags, tx, y + hh * 0.5f + f2 * 1.45f, tagPaint)
+        if (second.isNotEmpty()) {
+            styledText(canvas, name, tx, y + hh * 0.5f, namePaint, o, hh, 1f)
+            styledText(canvas, second, tx, y + hh * 0.5f + f2 * 1.45f, tagPaint, o, hh, 0.6f)
         } else {
-            canvas.drawText(name, tx, y + hh / 2f + f1 * 0.35f, namePaint)
+            styledText(canvas, name, tx, y + hh / 2f + f1 * 0.35f, namePaint, o, hh, 1f)
         }
     }
 

@@ -2,6 +2,7 @@ package com.amrnsyt.videosqueeze.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -13,16 +14,21 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -211,6 +217,53 @@ fun MediaTag(text: String, modifier: Modifier = Modifier) {
             .padding(horizontal = Spacing.m, vertical = Spacing.xs)
     ) {
         Text(text, style = MaterialTheme.typography.labelMedium, color = Color.White)
+    }
+}
+
+/** Row of color swatches plus a hex field, for text / outline / shadow colors. */
+@Composable
+fun ColorPicker(
+    title: String,
+    selected: Int,
+    colors: List<Int>,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var hex by remember(selected) { mutableStateOf(String.format("%06X", selected and 0xFFFFFF)) }
+    Column(modifier = modifier.fillMaxWidth().padding(top = Spacing.m)) {
+        Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+        ChipScroller(modifier = Modifier.padding(top = Spacing.s)) {
+            colors.forEach { c ->
+                val isSel = c == selected
+                Box(
+                    modifier = Modifier
+                        .size(Spacing.swatch)
+                        .clip(CircleShape)
+                        .background(Color(c))
+                        .border(
+                            width = if (isSel) Spacing.ring else Spacing.stroke,
+                            color = if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                            shape = CircleShape
+                        )
+                        .clickable { onSelect(c) }
+                )
+            }
+        }
+        OutlinedTextField(
+            value = hex,
+            onValueChange = { v ->
+                val clean = v.trim().removePrefix("#").uppercase().filter { it in "0123456789ABCDEF" }.take(6)
+                hex = clean
+                if (clean.length == 6) onSelect((0xFF shl 24) or clean.toInt(16))
+            },
+            label = { Text("Hex color") },
+            prefix = { Text("#") },
+            singleLine = true,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Spacing.s)
+        )
     }
 }
 

@@ -22,6 +22,8 @@ object Spacing {
     val icon = 20.dp
     val handleW = 36.dp
     val handleH = 4.dp
+    val swatch = 36.dp
+    val ring = 3.dp
 }
 
 private val AppColors = darkColorScheme(

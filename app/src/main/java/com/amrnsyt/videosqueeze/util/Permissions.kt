@@ -17,6 +17,11 @@ object Permissions {
         else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
     }
 
+    /** Lets the app read a photo's GPS position (Android hides it otherwise). */
+    fun hasMediaLocation(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_MEDIA_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+
     /** True for full access, and on Android 14+ also for "selected photos only". */
     fun hasGalleryAccess(context: Context): Boolean =
         galleryPermissions().any {

@@ -1,5 +1,6 @@
 package com.amrnsyt.videosqueeze.watermark
 
+import android.Manifest
 import android.graphics.Bitmap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -65,6 +66,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.amrnsyt.videosqueeze.ui.BigButton
+import com.amrnsyt.videosqueeze.ui.ColorPicker
 import com.amrnsyt.videosqueeze.ui.ChipScroller
 import com.amrnsyt.videosqueeze.ui.EditorTopBar
 import com.amrnsyt.videosqueeze.ui.MediaTag
@@ -98,6 +100,11 @@ fun WatermarkScreen(vm: WatermarkViewModel = viewModel()) {
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { vm.setSingle(it) }
 
+    var locationAccess by remember { mutableStateOf(Permissions.hasMediaLocation(context)) }
+    val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        locationAccess = it
+    }
+
     LaunchedEffect(access) { if (access) vm.loadGallery() }
     LaunchedEffect(vm) {
         vm.shareEvents.collect { (uri, mime) -> Intents.share(context, uri, mime) }
@@ -112,7 +119,11 @@ fun WatermarkScreen(vm: WatermarkViewModel = viewModel()) {
         onChange = vm::update,
         onSave = { vm.save(it, share = false) },
         onShare = { vm.save(it, share = true) },
-        onPageChanged = vm::clearMessage
+        onPageChanged = vm::clearMessage,
+        locationAccess = locationAccess,
+        onRequestLocation = {
+            if (!locationAccess) locationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
+        }
     )
 }
 
@@ -127,6 +138,8 @@ fun WatermarkContent(
     onSave: (GalleryPhoto) -> Unit,
     onShare: (GalleryPhoto) -> Unit,
     onPageChanged: () -> Unit,
+    locationAccess: Boolean,
+    onRequestLocation: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val photos = state.photos
@@ -175,7 +188,7 @@ fun WatermarkContent(
                             pageSpacing = Spacing.m,
                             key = { photos[it].uri.toString() }
                         ) { page ->
-                            PhotoPage(photo = photos[page], options = options)
+                            PhotoPage(photo = photos[page], options = options, locationAccess = locationAccess)
                         }
                         MediaTag(
                             text = "${pagerState.currentPage + 1} / ${photos.size}",
@@ -198,6 +211,7 @@ fun WatermarkContent(
                         onChange = onChange,
                         onSave = { current?.let(onSave) },
                         onShare = { current?.let(onShare) },
+                        onRequestLocation = onRequestLocation,
                         sheetMax = sheetMax
                     )
                 }
@@ -208,13 +222,25 @@ fun WatermarkContent(
 
 /** One swipeable page: the photo with the badge drawn live on top of it. */
 @Composable
-private fun PhotoPage(photo: GalleryPhoto, options: BadgeOptions, modifier: Modifier = Modifier) {
+private fun PhotoPage(
+    photo: GalleryPhoto,
+    options: BadgeOptions,
+    locationAccess: Boolean,
+    modifier: Modifier = Modifier
+) {
     val context = LocalContext.current
     val bmp by produceState<Bitmap?>(initialValue = null, photo.uri) {
         value = withContext(Dispatchers.IO) { ImageCache.load(context, photo.uri, PREVIEW_PX) }
     }
-    val meta by produceState<PhotoMeta?>(initialValue = null, photo.uri) {
+    val baseMeta by produceState<PhotoMeta?>(initialValue = null, photo.uri, locationAccess) {
         value = withContext(Dispatchers.IO) { ExifReader.read(context, photo.uri) }
+    }
+    val wantPlace = options.showLocation && options.locationMode == LocationMode.Place && options.locationText.isBlank()
+    val meta by produceState<PhotoMeta?>(initialValue = baseMeta, baseMeta, wantPlace) {
+        val b = baseMeta
+        value = if (b != null && wantPlace && b.lat != null) {
+            withContext(Dispatchers.IO) { ExifReader.withPlace(context, b) }
+        } else b
     }
     Box(modifier = modifier.fillMaxSize().padding(horizontal = Spacing.s), contentAlignment = Alignment.Center) {
         Crossfade(targetState = bmp, animationSpec = tween(250), label = "photo") { b ->
@@ -295,10 +321,11 @@ private fun WatermarkSheet(
     onChange: ((BadgeOptions) -> BadgeOptions) -> Unit,
     onSave: () -> Unit,
     onShare: () -> Unit,
+    onRequestLocation: () -> Unit,
     sheetMax: Dp
 ) {
     Sheet(maxHeight = sheetMax) {
-        PanelTabs(listOf("Badge", "Style", "Export"), tab, onTab)
+        PanelTabs(listOf("Badge", "Text", "Style", "Export"), tab, onTab)
         Column(
             modifier = Modifier
                 .weight(1f, fill = false)
@@ -308,8 +335,9 @@ private fun WatermarkSheet(
             AnimatedContent(targetState = tab, transitionSpec = tabTransition(), label = "wmTab") { t ->
                 Column {
                     when (t) {
-                        0 -> BadgeTab(options, onChange)
-                        1 -> StyleTab(options, onChange)
+                        0 -> BadgeTab(options, onChange, onRequestLocation)
+                        1 -> TextTab(options, onChange)
+                        2 -> StyleTab(options, onChange)
                         else -> ExportTab(options, onChange)
                     }
                 }
@@ -342,7 +370,12 @@ private fun WatermarkSheet(
 }
 
 @Composable
-private fun BadgeTab(options: BadgeOptions, onChange: ((BadgeOptions) -> BadgeOptions) -> Unit) {
+private fun BadgeTab(
+    options: BadgeOptions,
+    onChange: ((BadgeOptions) -> BadgeOptions) -> Unit,
+    onRequestLocation: () -> Unit
+) {
+    val centered = options.style == BadgeStyle.Centered
     ChipScroller {
         BadgeStyle.entries.forEach { st ->
             SelectChip(
@@ -371,7 +404,7 @@ private fun BadgeTab(options: BadgeOptions, onChange: ((BadgeOptions) -> BadgeOp
             .fillMaxWidth()
             .padding(top = Spacing.m)
     )
-    AnimatedVisibility(visible = options.style == BadgeStyle.Pill) {
+    AnimatedVisibility(visible = !centered && options.showDetails) {
         OutlinedTextField(
             value = options.tags,
             onValueChange = { v -> onChange { it.copy(tags = v) } },
@@ -383,28 +416,20 @@ private fun BadgeTab(options: BadgeOptions, onChange: ((BadgeOptions) -> BadgeOp
                 .padding(top = Spacing.m)
         )
     }
-    AnimatedVisibility(visible = options.style == BadgeStyle.Centered) {
-        Column {
-            OutlinedTextField(
-                value = options.info,
-                onValueChange = { v -> onChange { it.copy(info = v) } },
-                label = { Text("Details line") },
-                placeholder = { Text("Blank = read from the photo") },
-                singleLine = true,
-                shape = MaterialTheme.shapes.medium,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = Spacing.m)
-            )
-            SwitchRow(
-                title = "Show date and time",
-                subtitle = "Taken from the photo's own data.",
-                checked = options.showDate,
-                onCheckedChange = { v -> onChange { it.copy(showDate = v) } },
-                modifier = Modifier.padding(top = Spacing.s)
-            )
-        }
+    AnimatedVisibility(visible = centered && options.showDetails) {
+        OutlinedTextField(
+            value = options.info,
+            onValueChange = { v -> onChange { it.copy(info = v) } },
+            label = { Text("Details line") },
+            placeholder = { Text("Blank = read from the photo") },
+            singleLine = true,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Spacing.m)
+        )
     }
+
     SwitchRow(
         title = "Show G logo",
         subtitle = "Google logo in a white circle.",
@@ -412,6 +437,118 @@ private fun BadgeTab(options: BadgeOptions, onChange: ((BadgeOptions) -> BadgeOp
         onCheckedChange = { v -> onChange { it.copy(showLogo = v) } },
         modifier = Modifier.padding(top = Spacing.s)
     )
+    SwitchRow(
+        title = "Show details",
+        subtitle = if (centered) "Lens line such as 23mm  f/1.7  1/4476s  ISO50." else "The small hashtags line.",
+        checked = options.showDetails,
+        onCheckedChange = { v -> onChange { it.copy(showDetails = v) } }
+    )
+    AnimatedVisibility(visible = centered) {
+        SwitchRow(
+            title = "Show date and time",
+            subtitle = "Taken from the photo's own data.",
+            checked = options.showDate,
+            onCheckedChange = { v -> onChange { it.copy(showDate = v) } }
+        )
+    }
+    SwitchRow(
+        title = "Show location",
+        subtitle = "From the photo's GPS. Needs location access for photos.",
+        checked = options.showLocation,
+        onCheckedChange = { v ->
+            onChange { it.copy(showLocation = v) }
+            if (v) onRequestLocation()
+        }
+    )
+    AnimatedVisibility(visible = options.showLocation) {
+        Column {
+            ChipScroller(modifier = Modifier.padding(top = Spacing.xs)) {
+                LocationMode.entries.forEach { mode ->
+                    SelectChip(
+                        text = mode.label,
+                        selected = options.locationMode == mode,
+                        onClick = { onChange { it.copy(locationMode = mode) } }
+                    )
+                }
+            }
+            OutlinedTextField(
+                value = options.locationText,
+                onValueChange = { v -> onChange { it.copy(locationText = v) } },
+                label = { Text("Custom location") },
+                placeholder = { Text("Blank = from the photo") },
+                singleLine = true,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = Spacing.s)
+            )
+            Text(
+                "Place names need internet. Without it, coordinates are shown.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = Spacing.xs)
+            )
+        }
+    }
+}
+
+@Composable
+private fun TextTab(options: BadgeOptions, onChange: ((BadgeOptions) -> BadgeOptions) -> Unit) {
+    ColorPicker(
+        title = "Text color",
+        selected = options.textColor,
+        colors = TextPalette.colors,
+        onSelect = { c -> onChange { it.copy(textColor = c) } },
+        modifier = Modifier.padding(top = Spacing.xs)
+    )
+    SwitchRow(
+        title = "Outline",
+        subtitle = "A colored edge around the letters.",
+        checked = options.outlineOn,
+        onCheckedChange = { v -> onChange { it.copy(outlineOn = v) } },
+        modifier = Modifier.padding(top = Spacing.m)
+    )
+    AnimatedVisibility(visible = options.outlineOn) {
+        Column {
+            ValueSlider(
+                label = "Outline width",
+                valueText = "${options.outlineWidth.roundToInt()}%",
+                value = options.outlineWidth,
+                range = 0f..100f,
+                onValueChange = { v -> onChange { it.copy(outlineWidth = v) } }
+            )
+            ColorPicker(
+                title = "Outline color",
+                selected = options.outlineColor,
+                colors = TextPalette.colors,
+                onSelect = { c -> onChange { it.copy(outlineColor = c) } }
+            )
+        }
+    }
+    SwitchRow(
+        title = "Shadow",
+        subtitle = "A soft shadow under the text and logo.",
+        checked = options.shadowOn,
+        onCheckedChange = { v -> onChange { it.copy(shadowOn = v) } },
+        modifier = Modifier.padding(top = Spacing.m)
+    )
+    AnimatedVisibility(visible = options.shadowOn) {
+        Column {
+            ValueSlider(
+                label = "Shadow strength",
+                valueText = "${options.shadowStrength.roundToInt()}%",
+                value = options.shadowStrength,
+                range = 0f..100f,
+                onValueChange = { v -> onChange { it.copy(shadowStrength = v) } }
+            )
+            ColorPicker(
+                title = "Shadow color",
+                selected = options.shadowColor,
+                colors = TextPalette.colors,
+                onSelect = { c -> onChange { it.copy(shadowColor = c) } }
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -467,7 +604,8 @@ private fun WatermarkContentPreview() {
             state = WmUiState(photos = emptyList()),
             options = BadgeOptions(),
             hasAccess = false,
-            onRequestAccess = {}, onPickOne = {}, onChange = {}, onSave = {}, onShare = {}, onPageChanged = {}
+            onRequestAccess = {}, onPickOne = {}, onChange = {}, onSave = {}, onShare = {}, onPageChanged = {},
+            locationAccess = false, onRequestLocation = {}
         )
     }
 }

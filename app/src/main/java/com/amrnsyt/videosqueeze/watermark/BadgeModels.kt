@@ -17,6 +17,21 @@ enum class BadgeStyle(val label: String) {
     Centered("Centered")
 }
 
+enum class LocationMode(val label: String) {
+    Place("Place name"),
+    Coordinates("Coordinates")
+}
+
+/** Colors offered for text, outline and shadow (ARGB). */
+object TextPalette {
+    val colors: List<Int> = listOf(
+        0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0xFFFFD43B.toInt(), 0xFFFF9500.toInt(), 0xFFFF453A.toInt(),
+        0xFFFF6FB5.toInt(), 0xFFBF5AF2.toInt(), 0xFF4F8CFF.toInt(), 0xFF32D4FF.toInt(), 0xFF30D158.toInt()
+    )
+    val white: Int = colors[0]
+    val black: Int = colors[1]
+}
+
 enum class ExportFormat(
     val label: String,
     val ext: String,
@@ -40,7 +55,18 @@ data class BadgeOptions(
     val format: ExportFormat = ExportFormat.Jpeg98,
     val style: BadgeStyle = BadgeStyle.Pill,
     val info: String = "",
-    val showDate: Boolean = true
+    val showDate: Boolean = true,
+    val showDetails: Boolean = true,
+    val showLocation: Boolean = false,
+    val locationMode: LocationMode = LocationMode.Place,
+    val locationText: String = "",
+    val textColor: Int = TextPalette.white,
+    val outlineOn: Boolean = false,
+    val outlineColor: Int = TextPalette.black,
+    val outlineWidth: Float = 40f,
+    val shadowOn: Boolean = true,
+    val shadowColor: Int = TextPalette.black,
+    val shadowStrength: Float = 50f
 )
 
 @Immutable

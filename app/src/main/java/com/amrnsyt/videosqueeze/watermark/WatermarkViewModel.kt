@@ -53,7 +53,18 @@ class WatermarkViewModel(app: Application) : AndroidViewModel(app) {
             format = ExportFormat.entries.getOrElse(prefs.getInt("fmt", 0)) { d.format },
             style = BadgeStyle.entries.getOrElse(prefs.getInt("style", 0)) { d.style },
             info = prefs.getString("info", d.info) ?: d.info,
-            showDate = prefs.getBoolean("date", d.showDate)
+            showDate = prefs.getBoolean("date", d.showDate),
+            showDetails = prefs.getBoolean("details", d.showDetails),
+            showLocation = prefs.getBoolean("loc", d.showLocation),
+            locationMode = LocationMode.entries.getOrElse(prefs.getInt("locMode", 0)) { d.locationMode },
+            locationText = prefs.getString("locText", d.locationText) ?: d.locationText,
+            textColor = prefs.getInt("tColor", d.textColor),
+            outlineOn = prefs.getBoolean("oOn", d.outlineOn),
+            outlineColor = prefs.getInt("oColor", d.outlineColor),
+            outlineWidth = prefs.getFloat("oWidth", d.outlineWidth),
+            shadowOn = prefs.getBoolean("sOn", d.shadowOn),
+            shadowColor = prefs.getInt("sColor", d.shadowColor),
+            shadowStrength = prefs.getFloat("sStrength", d.shadowStrength)
         )
     }
 
@@ -69,6 +80,17 @@ class WatermarkViewModel(app: Application) : AndroidViewModel(app) {
             .putInt("style", o.style.ordinal)
             .putString("info", o.info)
             .putBoolean("date", o.showDate)
+            .putBoolean("details", o.showDetails)
+            .putBoolean("loc", o.showLocation)
+            .putInt("locMode", o.locationMode.ordinal)
+            .putString("locText", o.locationText)
+            .putInt("tColor", o.textColor)
+            .putBoolean("oOn", o.outlineOn)
+            .putInt("oColor", o.outlineColor)
+            .putFloat("oWidth", o.outlineWidth)
+            .putBoolean("sOn", o.shadowOn)
+            .putInt("sColor", o.shadowColor)
+            .putFloat("sStrength", o.shadowStrength)
             .apply()
     }
 
@@ -130,7 +152,10 @@ class WatermarkViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     val w = bmp.width
                     val h = bmp.height
-                    val meta = ExifReader.read(app, photo.uri)
+                    var meta = ExifReader.read(app, photo.uri)
+                    if (o.showLocation && o.locationMode == LocationMode.Place && o.locationText.isBlank()) {
+                        meta = ExifReader.withPlace(app, meta)
+                    }
                     BadgeRenderer.draw(Canvas(bmp), w, h, o, meta)
                     val fmt = o.format
                     val displayName = photo.name.substringBeforeLast('.') + "_wm." + fmt.ext
